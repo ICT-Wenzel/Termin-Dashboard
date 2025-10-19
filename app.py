@@ -1,50 +1,53 @@
 import streamlit as st
 import requests
 from datetime import datetime, timedelta
-import json
+import re
 import pandas as pd
 
 # Page Config
 st.set_page_config(
-    page_title="📅 Nachhilfe Kalender",
+    page_title="Nachhilfe Dashboard",
     page_icon="📚",
     layout="wide"
 )
 
-# Custom CSS
+# CSS Styles
 st.markdown("""
 <style>
     .event-item {
-        background: #2f3542;               /* dunkles Grau */
-        color: #f1f2f6;                    /* helle Schrift */
+        background: #f7f8fc;
         padding: 15px;
         border-radius: 8px;
         margin: 10px 0;
-        border-left: 4px solid #70a1ff;    /* hellblauer Akzent */
-        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-    }
-    .event-item a {
-        color: #70a1ff;
+        border-left: 4px solid #4a6cf7;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        color: #222;
     }
     .event-item h4 {
-        color: #dfe4ea;
+        color: #1f2937;
         margin-bottom: 6px;
     }
     .event-item p {
-        margin: 3px 0;
+        margin: 2px 0;
         font-size: 0.95rem;
+    }
+    .stat-box {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
     }
 </style>
 """, unsafe_allow_html=True)
-
 
 # Load Secrets
 try:
     API_BASE_URL = st.secrets["api"]["base_url"]
 except Exception:
     st.error("""
-    ### ⚠️ API URL nicht konfiguriert!
-    Bitte füge in `.streamlit/secrets.toml` Folgendes hinzu:
+    ⚠️ API URL nicht konfiguriert!
+    Füge bitte in `.streamlit/secrets.toml` folgendes hinzu:
     ```toml
     [api]
     base_url = "https://your-n8n-instance.com/webhook"
@@ -55,21 +58,14 @@ except Exception:
 # API Request
 def api_request(params=None):
     try:
-        url = API_BASE_URL
-        with st.sidebar:
-            st.write(f"🔗 **API Call:** `{url}`")
-            if params:
-                st.write(f"📝 **Params:** {params}")
-        response = requests.get(url, params=params, timeout=15)
-
+        response = requests.get(API_BASE_URL, params=params, timeout=15)
         if response.status_code == 200:
             data = response.json()
             with st.sidebar.expander("📦 API Response (Debug)"):
                 st.json(data)
             return data
         else:
-            st.error(f"❌ Fehler: {response.status_code}")
-            st.text(response.text)
+            st.error(f"Fehler {response.status_code}")
             return []
     except Exception as e:
         st.error(f"API Fehler: {e}")
@@ -79,117 +75,162 @@ def api_request(params=None):
 def fetch_calendar():
     """Holt alle Kalender-Events"""
     data = api_request(params={"type": "calendar"})
-    
-    # Wenn direkt eine Liste kommt
     if isinstance(data, list):
         return data
-
-    # Wenn ein einzelnes Event (dict) kommt → in Liste verpacken
     elif isinstance(data, dict):
-        # Prüfen, ob es evtl. schon ein 'events' oder 'calendar'-Key gibt
+        # Einzelnes Event -> Liste draus machen
         if "events" in data:
             return data["events"]
         elif "calendar" in data:
             return data["calendar"]
         else:
-            # Es ist ein einzelnes Event
             return [data]
-    
     return []
 
-
 def format_datetime(dt_string):
-    """Formatiert ISO DateTime String"""
     try:
         dt = datetime.fromisoformat(dt_string.replace('Z', '+00:00'))
         return dt.strftime("%d.%m.%Y %H:%M")
     except:
         return dt_string
 
-# Sidebar
+def parse_description(desc):
+    """Extrahiert Lehrer, Schüler, Thema aus der Beschreibung"""
+    if not desc:
+        return {"Lehrer": None, "Schüler": None, "Thema": None}
+    info = {}
+    for key in ["Lehrer", "Schüler", "Thema"]:
+        match = re.search(rf"{key}:\s*([^\n\r]+)", desc)
+        if match:
+            info[key] = match.group(1).strip()
+    return info
+
+# Sidebar Navigation
 st.sidebar.title("📚 Nachhilfe Dashboard")
+
 if st.sidebar.button("🔄 Aktualisieren"):
     st.cache_data.clear()
     st.rerun()
 
-# Hauptinhalt
-st.title("📅 Kalender Übersicht")
+page = st.sidebar.radio(
+    "Navigation",
+    ["📅 Kalender", "👨‍🎓 Schüler", "👨‍🏫 Lehrer"]
+)
 
+# Kalenderdaten holen
 with st.spinner("Lade Kalenderdaten..."):
     events = fetch_calendar()
 
+# Falls keine Daten
 if not events:
     st.warning("Keine Kalender-Events gefunden.")
     st.stop()
 
-# Stats
-col1, col2, col3 = st.columns(3)
-today = datetime.now().date()
-week_end = today + timedelta(days=7)
-
-today_events = [
-    e for e in events
-    if "start" in e and datetime.fromisoformat(
-        e["start"]["dateTime"].replace("Z", "+00:00")
-    ).date() == today
-]
-
-week_events = [
-    e for e in events
-    if "start" in e and today <= datetime.fromisoformat(
-        e["start"]["dateTime"].replace("Z", "+00:00")
-    ).date() <= week_end
-]
-
-with col1:
-    st.markdown(f"""
-    <div class="stat-box">
-        <h2>{len(events)}</h2>
-        <p>Termine Gesamt</p>
-    </div>
-    """, unsafe_allow_html=True)
-with col2:
-    st.markdown(f"""
-    <div class="stat-box">
-        <h2>{len(today_events)}</h2>
-        <p>Heute</p>
-    </div>
-    """, unsafe_allow_html=True)
-with col3:
-    st.markdown(f"""
-    <div class="stat-box">
-        <h2>{len(week_events)}</h2>
-        <p>Diese Woche</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("---")
-
-# Events sortieren
-try:
-    events = sorted(events, key=lambda x: x["start"]["dateTime"])
-except:
-    pass
-
-# Anzeigen der Events
-st.subheader(f"📋 Alle Termine ({len(events)})")
-
+# Alle Events erweitern mit Info aus Beschreibung
 for e in events:
-    start = e.get("start", {}).get("dateTime")
-    end = e.get("end", {}).get("dateTime")
-    st.markdown(f"""
-    <div class="event-item">
-        <h4>{e.get('summary', 'Termin')}</h4>
-        <p><strong>🕐 Zeit:</strong> {format_datetime(start)} - {format_datetime(end)}</p>
-        <p><strong>📘 Beschreibung:</strong> {e.get('description', 'Keine Beschreibung')}</p>
-        <p><a href="{e.get('htmlLink', '#')}" target="_blank">🌐 Im Kalender öffnen</a></p>
-    </div>
-    """, unsafe_allow_html=True)
+    info = parse_description(e.get("description", ""))
+    e.update(info)
+
+# Seitenlogik
+if page == "📅 Kalender":
+    st.title("📅 Kalender Übersicht")
+
+    col1, col2, col3 = st.columns(3)
+    today = datetime.now().date()
+    week_end = today + timedelta(days=7)
+
+    today_events = [
+        e for e in events
+        if "start" in e and datetime.fromisoformat(
+            e["start"]["dateTime"].replace("Z", "+00:00")
+        ).date() == today
+    ]
+
+    week_events = [
+        e for e in events
+        if "start" in e and today <= datetime.fromisoformat(
+            e["start"]["dateTime"].replace("Z", "+00:00")
+        ).date() <= week_end
+    ]
+
+    with col1:
+        st.markdown(f"<div class='stat-box'><h2>{len(events)}</h2><p>Termine Gesamt</p></div>", unsafe_allow_html=True)
+    with col2:
+        st.markdown(f"<div class='stat-box'><h2>{len(today_events)}</h2><p>Heute</p></div>", unsafe_allow_html=True)
+    with col3:
+        st.markdown(f"<div class='stat-box'><h2>{len(week_events)}</h2><p>Diese Woche</p></div>", unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    for e in sorted(events, key=lambda x: x["start"]["dateTime"]):
+        st.markdown(f"""
+        <div class="event-item">
+            <h4>{e.get('summary', 'Termin')}</h4>
+            <p><strong>🕐 Zeit:</strong> {format_datetime(e["start"]["dateTime"])} - {format_datetime(e["end"]["dateTime"])}</p>
+            <p><strong>👨‍🏫 Lehrer:</strong> {e.get('Lehrer', 'N/A')}</p>
+            <p><strong>👨‍🎓 Schüler:</strong> {e.get('Schüler', 'N/A')}</p>
+            <p><strong>📘 Thema:</strong> {e.get('Thema', 'N/A')}</p>
+            <p><a href="{e.get('htmlLink', '#')}" target="_blank">🌐 Im Kalender öffnen</a></p>
+        </div>
+        """, unsafe_allow_html=True)
+
+elif page == "👨‍🎓 Schüler":
+    st.title("👨‍🎓 Schüler Übersicht")
+
+    # Alle Schülernamen aus Events extrahieren
+    schueler = sorted(set([e.get("Schüler") for e in events if e.get("Schüler")]))
+
+    if not schueler:
+        st.info("Keine Schüler in den Beschreibungen gefunden.")
+        st.stop()
+
+    selected_student = st.selectbox("Schüler auswählen", schueler)
+
+    student_events = [e for e in events if e.get("Schüler") == selected_student]
+
+    st.subheader(f"📅 Termine von {selected_student}")
+
+    for e in sorted(student_events, key=lambda x: x["start"]["dateTime"]):
+        st.markdown(f"""
+        <div class="event-item">
+            <h4>{e.get('summary', 'Termin')}</h4>
+            <p><strong>🕐 Zeit:</strong> {format_datetime(e["start"]["dateTime"])}</p>
+            <p><strong>👨‍🏫 Lehrer:</strong> {e.get('Lehrer', 'N/A')}</p>
+            <p><strong>📘 Thema:</strong> {e.get('Thema', 'N/A')}</p>
+            <p><a href="{e.get('htmlLink', '#')}" target="_blank">🌐 Im Kalender öffnen</a></p>
+        </div>
+        """, unsafe_allow_html=True)
+
+elif page == "👨‍🏫 Lehrer":
+    st.title("👨‍🏫 Lehrer Übersicht")
+
+    lehrer = sorted(set([e.get("Lehrer") for e in events if e.get("Lehrer")]))
+
+    if not lehrer:
+        st.info("Keine Lehrer in den Beschreibungen gefunden.")
+        st.stop()
+
+    selected_teacher = st.selectbox("Lehrer auswählen", lehrer)
+
+    teacher_events = [e for e in events if e.get("Lehrer") == selected_teacher]
+
+    st.subheader(f"📅 Termine von {selected_teacher}")
+
+    for e in sorted(teacher_events, key=lambda x: x["start"]["dateTime"]):
+        st.markdown(f"""
+        <div class="event-item">
+            <h4>{e.get('summary', 'Termin')}</h4>
+            <p><strong>🕐 Zeit:</strong> {format_datetime(e["start"]["dateTime"])}</p>
+            <p><strong>👨‍🎓 Schüler:</strong> {e.get('Schüler', 'N/A')}</p>
+            <p><strong>📘 Thema:</strong> {e.get('Thema', 'N/A')}</p>
+            <p><a href="{e.get('htmlLink', '#')}" target="_blank">🌐 Im Kalender öffnen</a></p>
+        </div>
+        """, unsafe_allow_html=True)
 
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.info(f"""
-**Nachhilfe Kalender Dashboard**  
-Version 1.0 - nur Kalenderansicht  
+**Nachhilfe Dashboard**  
+Version 2.0 – aus Kalenderdaten generiert  
 Letzte Aktualisierung: {datetime.now().strftime("%d.%m.%Y %H:%M")}
 """)
