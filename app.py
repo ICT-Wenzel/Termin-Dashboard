@@ -4,14 +4,18 @@ from datetime import datetime, timedelta
 import re
 import pandas as pd
 
-# Page Config
+# -------------------------------------------------
+# 🧭 Grundkonfiguration
+# -------------------------------------------------
 st.set_page_config(
     page_title="Nachhilfe Dashboard",
     page_icon="📚",
     layout="wide"
 )
 
-# CSS Styles
+# -------------------------------------------------
+# 🎨 Styling
+# -------------------------------------------------
 st.markdown("""
 <style>
     .event-item {
@@ -41,7 +45,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Load Secrets
+# -------------------------------------------------
+# 🔐 API laden
+# -------------------------------------------------
 try:
     API_BASE_URL = st.secrets["api"]["base_url"]
 except Exception:
@@ -55,7 +61,9 @@ except Exception:
     """)
     st.stop()
 
-# API Request
+# -------------------------------------------------
+# 🌐 API Anfrage
+# -------------------------------------------------
 def api_request(params=None):
     try:
         response = requests.get(API_BASE_URL, params=params, timeout=15)
@@ -71,6 +79,9 @@ def api_request(params=None):
         st.error(f"API Fehler: {e}")
         return []
 
+# -------------------------------------------------
+# 📅 Kalenderdaten holen & cachen
+# -------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_calendar():
     """Holt alle Kalender-Events"""
@@ -78,7 +89,6 @@ def fetch_calendar():
     if isinstance(data, list):
         return data
     elif isinstance(data, dict):
-        # Einzelnes Event -> Liste draus machen
         if "events" in data:
             return data["events"]
         elif "calendar" in data:
@@ -87,6 +97,9 @@ def fetch_calendar():
             return [data]
     return []
 
+# -------------------------------------------------
+# 🕓 Hilfsfunktionen
+# -------------------------------------------------
 def format_datetime(dt_string):
     try:
         dt = datetime.fromisoformat(dt_string.replace('Z', '+00:00'))
@@ -105,7 +118,9 @@ def parse_description(desc):
             info[key] = match.group(1).strip()
     return info
 
-# Sidebar Navigation
+# -------------------------------------------------
+# 🧭 Sidebar Navigation
+# -------------------------------------------------
 st.sidebar.title("📚 Nachhilfe Dashboard")
 
 if st.sidebar.button("🔄 Aktualisieren"):
@@ -117,21 +132,24 @@ page = st.sidebar.radio(
     ["📅 Kalender", "👨‍🎓 Schüler", "👨‍🏫 Lehrer"]
 )
 
-# Kalenderdaten holen
+# -------------------------------------------------
+# 🔄 Daten laden
+# -------------------------------------------------
 with st.spinner("Lade Kalenderdaten..."):
     events = fetch_calendar()
 
-# Falls keine Daten
 if not events:
     st.warning("Keine Kalender-Events gefunden.")
     st.stop()
 
-# Alle Events erweitern mit Info aus Beschreibung
+# Beschreibung auslesen
 for e in events:
     info = parse_description(e.get("description", ""))
     e.update(info)
 
-# Seitenlogik
+# -------------------------------------------------
+# 📅 Kalenderübersicht
+# -------------------------------------------------
 if page == "📅 Kalender":
     st.title("📅 Kalender Übersicht")
 
@@ -162,22 +180,28 @@ if page == "📅 Kalender":
 
     st.markdown("---")
 
-    for e in sorted(events, key=lambda x: x["start"]["dateTime"]):
-        st.markdown(f"""
-        <div class="event-item">
-            <h4>{e.get('summary', 'Termin')}</h4>
-            <p><strong>🕐 Zeit:</strong> {format_datetime(e["start"]["dateTime"])} - {format_datetime(e["end"]["dateTime"])}</p>
-            <p><strong>👨‍🏫 Lehrer:</strong> {e.get('Lehrer', 'N/A')}</p>
-            <p><strong>👨‍🎓 Schüler:</strong> {e.get('Schüler', 'N/A')}</p>
-            <p><strong>📘 Thema:</strong> {e.get('Thema', 'N/A')}</p>
-            <p><a href="{e.get('htmlLink', '#')}" target="_blank">🌐 Im Kalender öffnen</a></p>
-        </div>
-        """, unsafe_allow_html=True)
+    # 🔹 DataFrame-Ansicht für große Datenmengen
+    calendar_df = pd.DataFrame([
+        {
+            "Datum Start": format_datetime(e["start"]["dateTime"]),
+            "Datum Ende": format_datetime(e["end"]["dateTime"]),
+            "Titel": e.get("summary", ""),
+            "Lehrer": e.get("Lehrer", "N/A"),
+            "Schüler": e.get("Schüler", "N/A"),
+            "Thema": e.get("Thema", "N/A"),
+            "Link": e.get("htmlLink", "")
+        }
+        for e in sorted(events, key=lambda x: x["start"]["dateTime"])
+    ])
 
+    st.dataframe(calendar_df, use_container_width=True, hide_index=True)
+
+# -------------------------------------------------
+# 👨‍🎓 Schülerübersicht
+# -------------------------------------------------
 elif page == "👨‍🎓 Schüler":
     st.title("👨‍🎓 Schüler Übersicht")
 
-    # Alle Schülernamen aus Events extrahieren
     schueler = sorted(set([e.get("Schüler") for e in events if e.get("Schüler")]))
 
     if not schueler:
@@ -185,22 +209,29 @@ elif page == "👨‍🎓 Schüler":
         st.stop()
 
     selected_student = st.selectbox("Schüler auswählen", schueler)
-
     student_events = [e for e in events if e.get("Schüler") == selected_student]
 
     st.subheader(f"📅 Termine von {selected_student}")
 
-    for e in sorted(student_events, key=lambda x: x["start"]["dateTime"]):
-        st.markdown(f"""
-        <div class="event-item">
-            <h4>{e.get('summary', 'Termin')}</h4>
-            <p><strong>🕐 Zeit:</strong> {format_datetime(e["start"]["dateTime"])}</p>
-            <p><strong>👨‍🏫 Lehrer:</strong> {e.get('Lehrer', 'N/A')}</p>
-            <p><strong>📘 Thema:</strong> {e.get('Thema', 'N/A')}</p>
-            <p><a href="{e.get('htmlLink', '#')}" target="_blank">🌐 Im Kalender öffnen</a></p>
-        </div>
-        """, unsafe_allow_html=True)
+    student_df = pd.DataFrame([
+        {
+            "Datum": format_datetime(e["start"]["dateTime"]),
+            "Lehrer": e.get("Lehrer", "N/A"),
+            "Thema": e.get("Thema", "N/A"),
+            "Titel": e.get("summary", ""),
+            "Link": e.get("htmlLink", "")
+        }
+        for e in sorted(student_events, key=lambda x: x["start"]["dateTime"])
+    ])
 
+    if student_df.empty:
+        st.info("Keine Termine gefunden.")
+    else:
+        st.dataframe(student_df, use_container_width=True, hide_index=True)
+
+# -------------------------------------------------
+# 👨‍🏫 Lehrerübersicht
+# -------------------------------------------------
 elif page == "👨‍🏫 Lehrer":
     st.title("👨‍🏫 Lehrer Übersicht")
 
@@ -211,26 +242,32 @@ elif page == "👨‍🏫 Lehrer":
         st.stop()
 
     selected_teacher = st.selectbox("Lehrer auswählen", lehrer)
-
     teacher_events = [e for e in events if e.get("Lehrer") == selected_teacher]
 
     st.subheader(f"📅 Termine von {selected_teacher}")
 
-    for e in sorted(teacher_events, key=lambda x: x["start"]["dateTime"]):
-        st.markdown(f"""
-        <div class="event-item">
-            <h4>{e.get('summary', 'Termin')}</h4>
-            <p><strong>🕐 Zeit:</strong> {format_datetime(e["start"]["dateTime"])}</p>
-            <p><strong>👨‍🎓 Schüler:</strong> {e.get('Schüler', 'N/A')}</p>
-            <p><strong>📘 Thema:</strong> {e.get('Thema', 'N/A')}</p>
-            <p><a href="{e.get('htmlLink', '#')}" target="_blank">🌐 Im Kalender öffnen</a></p>
-        </div>
-        """, unsafe_allow_html=True)
+    teacher_df = pd.DataFrame([
+        {
+            "Datum": format_datetime(e["start"]["dateTime"]),
+            "Schüler": e.get("Schüler", "N/A"),
+            "Thema": e.get("Thema", "N/A"),
+            "Titel": e.get("summary", ""),
+            "Link": e.get("htmlLink", "")
+        }
+        for e in sorted(teacher_events, key=lambda x: x["start"]["dateTime"])
+    ])
 
-# Footer
+    if teacher_df.empty:
+        st.info("Keine Termine gefunden.")
+    else:
+        st.dataframe(teacher_df, use_container_width=True, hide_index=True)
+
+# -------------------------------------------------
+# 📘 Footer
+# -------------------------------------------------
 st.sidebar.markdown("---")
 st.sidebar.info(f"""
 **Nachhilfe Dashboard**  
-Version 2.0 – aus Kalenderdaten generiert  
+Version 3.0 – optimiert für 1000+ Termine  
 Letzte Aktualisierung: {datetime.now().strftime("%d.%m.%Y %H:%M")}
 """)
