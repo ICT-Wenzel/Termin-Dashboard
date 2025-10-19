@@ -47,20 +47,16 @@ st.markdown("""
 
 # Load Secrets
 try:
-    CALENDAR_WEBHOOK_URL = st.secrets["n8n"]["calendar_webhook"]
-    STUDENTS_WEBHOOK_URL = st.secrets["n8n"]["students_webhook"]
-    TEACHERS_WEBHOOK_URL = st.secrets["n8n"]["teachers_webhook"]
+    API_BASE_URL = st.secrets["api"]["base_url"]
 except Exception as e:
     st.error(f"""
-    ### ⚠️ Secrets nicht konfiguriert!
+    ### ⚠️ API URL nicht konfiguriert!
     
     Bitte erstelle eine `.streamlit/secrets.toml` Datei mit folgendem Inhalt:
     
     ```toml
-    [n8n]
-    calendar_webhook = "https://your-n8n-instance.com/webhook/calendar"
-    students_webhook = "https://your-n8n-instance.com/webhook/students"
-    teachers_webhook = "https://your-n8n-instance.com/webhook/teachers"
+    [api]
+    base_url = "https://your-n8n-instance.com/webhook"
     ```
     
     Oder füge die Secrets in der Streamlit Cloud hinzu.
@@ -69,86 +65,47 @@ except Exception as e:
 
 # API Functions
 @st.cache_data(ttl=300)
-def fetch_calendar_events():
-    """Holt Kalender-Events von n8n API"""
+def fetch_all_data():
+    """Holt alle Daten von der API (Kalender, Schüler, Lehrer)"""
     try:
-        response = requests.get(CALENDAR_WEBHOOK_URL, timeout=10)
+        response = requests.get(f"{API_BASE_URL}/data", timeout=15)
+        
         if response.status_code == 200:
             data = response.json()
-            # Falls die Response in einem bestimmten Format kommt, passe hier an
-            if isinstance(data, dict) and "events" in data:
-                return data["events"]
-            elif isinstance(data, list):
-                return data
-            else:
-                st.error("Unerwartetes Datenformat vom Calendar Webhook")
-                return []
+            
+            # Erwarte folgendes Format:
+            # {
+            #   "calendar": [...],
+            #   "students": [...],
+            #   "teachers": [...]
+            # }
+            
+            return {
+                "calendar": data.get("calendar", data.get("events", [])),
+                "students": data.get("students", []),
+                "teachers": data.get("teachers", [])
+            }
         else:
-            st.error(f"Calendar API Fehler: Status {response.status_code}")
-            return []
+            st.error(f"API Fehler: Status {response.status_code}")
+            return {"calendar": [], "students": [], "teachers": []}
+            
     except requests.exceptions.RequestException as e:
-        st.error(f"Verbindungsfehler zur Calendar API: {str(e)}")
-        return []
+        st.error(f"Verbindungsfehler zur API: {str(e)}")
+        return {"calendar": [], "students": [], "teachers": []}
     except json.JSONDecodeError:
-        st.error("Fehler beim Parsen der Calendar API Antwort")
-        return []
-
-@st.cache_data(ttl=600)
-def fetch_students():
-    """Holt Schülerdaten von n8n API"""
-    try:
-        response = requests.get(STUDENTS_WEBHOOK_URL, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            # Falls die Response in einem bestimmten Format kommt, passe hier an
-            if isinstance(data, dict) and "students" in data:
-                return data["students"]
-            elif isinstance(data, list):
-                return data
-            else:
-                st.error("Unerwartetes Datenformat vom Students Webhook")
-                return []
-        else:
-            st.error(f"Students API Fehler: Status {response.status_code}")
-            return []
-    except requests.exceptions.RequestException as e:
-        st.error(f"Verbindungsfehler zur Students API: {str(e)}")
-        return []
-    except json.JSONDecodeError:
-        st.error("Fehler beim Parsen der Students API Antwort")
-        return []
-
-@st.cache_data(ttl=600)
-def fetch_teachers():
-    """Holt Lehrerdaten von n8n API"""
-    try:
-        response = requests.get(TEACHERS_WEBHOOK_URL, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            # Falls die Response in einem bestimmten Format kommt, passe hier an
-            if isinstance(data, dict) and "teachers" in data:
-                return data["teachers"]
-            elif isinstance(data, list):
-                return data
-            else:
-                st.error("Unerwartetes Datenformat vom Teachers Webhook")
-                return []
-        else:
-            st.error(f"Teachers API Fehler: Status {response.status_code}")
-            return []
-    except requests.exceptions.RequestException as e:
-        st.error(f"Verbindungsfehler zur Teachers API: {str(e)}")
-        return []
-    except json.JSONDecodeError:
-        st.error("Fehler beim Parsen der Teachers API Antwort")
-        return []
+        st.error("Fehler beim Parsen der API Antwort")
+        return {"calendar": [], "students": [], "teachers": []}
 
 def filter_events_by_person(events, person_name):
     """Filtert Events nach Person (Schüler oder Lehrer)"""
+    if not events or not person_name:
+        return []
     return [e for e in events if person_name in e.get("student", "") or person_name in e.get("teacher", "")]
 
 def format_datetime(dt_string):
     """Formatiert ISO DateTime String"""
+    if not dt_string:
+        return "N/A"
     try:
         dt = datetime.fromisoformat(dt_string.replace('Z', '+00:00'))
         return dt.strftime("%d.%m.%Y %H:%M")
@@ -168,15 +125,16 @@ page = st.sidebar.radio(
     ["📅 Kalender", "👨‍🎓 Schüler", "👨‍🏫 Lehrer"]
 )
 
-# Load Data from APIs
-with st.spinner("Lade Daten..."):
-    calendar_events = fetch_calendar_events()
-    students = fetch_students()
-    teachers = fetch_teachers()
+# Load All Data from API
+with st.spinner("Lade Daten von API..."):
+    all_data = fetch_all_data()
+    calendar_events = all_data.get("calendar", [])
+    students = all_data.get("students", [])
+    teachers = all_data.get("teachers", [])
 
 # Check if data is loaded
 if not calendar_events and not students and not teachers:
-    st.error("Keine Daten von den APIs geladen. Bitte überprüfe deine Webhook-URLs.")
+    st.error("Keine Daten von der API geladen. Bitte überprüfe deine API-URL und die Verbindung.")
     st.stop()
 
 # PAGE 1: KALENDER
@@ -198,7 +156,15 @@ if page == "📅 Kalender":
             """, unsafe_allow_html=True)
         
         with col2:
-            today_events = [e for e in calendar_events if datetime.fromisoformat(e["start"].replace('Z', '+00:00')).date() == datetime.now().date()]
+            today_events = []
+            for e in calendar_events:
+                try:
+                    event_date = datetime.fromisoformat(e.get("start", "").replace('Z', '+00:00')).date()
+                    if event_date == datetime.now().date():
+                        today_events.append(e)
+                except:
+                    pass
+            
             st.markdown(f"""
             <div class="stat-box">
                 <h2>{len(today_events)}</h2>
@@ -207,7 +173,16 @@ if page == "📅 Kalender":
             """, unsafe_allow_html=True)
         
         with col3:
-            week_events = [e for e in calendar_events if datetime.fromisoformat(e["start"].replace('Z', '+00:00')) < datetime.now() + timedelta(days=7)]
+            week_events = []
+            week_end = datetime.now() + timedelta(days=7)
+            for e in calendar_events:
+                try:
+                    event_date = datetime.fromisoformat(e.get("start", "").replace('Z', '+00:00'))
+                    if event_date < week_end and event_date > datetime.now():
+                        week_events.append(e)
+                except:
+                    pass
+            
             st.markdown(f"""
             <div class="stat-box">
                 <h2>{len(week_events)}</h2>
@@ -246,10 +221,16 @@ if page == "📅 Kalender":
         if filter_teacher != "Alle":
             filtered_events = [e for e in filtered_events if e.get("teacher") == filter_teacher]
         
+        # Sort events by start time
+        try:
+            filtered_events = sorted(filtered_events, key=lambda x: x.get("start", ""))
+        except:
+            pass
+        
         # Display Events
         st.subheader(f"Termine ({len(filtered_events)})")
         
-        for event in sorted(filtered_events, key=lambda x: x.get("start", "")):
+        for event in filtered_events:
             st.markdown(f"""
             <div class="event-item">
                 <h4>{event.get('summary', 'Termin')}</h4>
@@ -281,7 +262,7 @@ elif page == "👨‍🎓 Schüler":
             
             with col1:
                 subjects = student.get('subjects', [])
-                subjects_str = ', '.join(subjects) if isinstance(subjects, list) else subjects
+                subjects_str = ', '.join(subjects) if isinstance(subjects, list) else str(subjects)
                 
                 st.markdown(f"""
                 <div class="student-card">
@@ -296,7 +277,14 @@ elif page == "👨‍🎓 Schüler":
             with col2:
                 # Stats for this student
                 student_events = filter_events_by_person(calendar_events, student.get("name", ""))
-                upcoming_events = [e for e in student_events if datetime.fromisoformat(e.get("start", "").replace('Z', '+00:00')) > datetime.now()]
+                upcoming_events = []
+                for e in student_events:
+                    try:
+                        event_date = datetime.fromisoformat(e.get("start", "").replace('Z', '+00:00'))
+                        if event_date > datetime.now():
+                            upcoming_events.append(e)
+                    except:
+                        pass
                 
                 col_a, col_b, col_c = st.columns(3)
                 with col_a:
@@ -313,7 +301,12 @@ elif page == "👨‍🎓 Schüler":
             st.subheader(f"📅 Termine von {student.get('name', 'Unbekannt')}")
             
             if student_events:
-                for event in sorted(student_events, key=lambda x: x.get("start", ""))[:10]:
+                try:
+                    sorted_events = sorted(student_events, key=lambda x: x.get("start", ""), reverse=True)[:10]
+                except:
+                    sorted_events = student_events[:10]
+                
+                for event in sorted_events:
                     st.markdown(f"""
                     <div class="event-item">
                         <h4>{event.get('summary', 'Termin')}</h4>
@@ -331,6 +324,11 @@ elif page == "👨‍🎓 Schüler":
             st.subheader("🔜 Nächste Termine")
             
             if upcoming_events:
+                try:
+                    upcoming_events = sorted(upcoming_events, key=lambda x: x.get("start", ""))[:5]
+                except:
+                    upcoming_events = upcoming_events[:5]
+                
                 df_upcoming = pd.DataFrame([
                     {
                         "Datum": format_datetime(e.get("start", "")),
@@ -338,7 +336,7 @@ elif page == "👨‍🎓 Schüler":
                         "Fach": e.get("subject", "N/A"),
                         "Thema": e.get("description", "Keine Beschreibung")
                     }
-                    for e in sorted(upcoming_events, key=lambda x: x.get("start", ""))[:5]
+                    for e in upcoming_events
                 ])
                 st.dataframe(df_upcoming, use_container_width=True)
             else:
@@ -365,7 +363,7 @@ elif page == "👨‍🏫 Lehrer":
             
             with col1:
                 subjects = teacher.get('subjects', [])
-                subjects_str = ', '.join(subjects) if isinstance(subjects, list) else subjects
+                subjects_str = ', '.join(subjects) if isinstance(subjects, list) else str(subjects)
                 
                 st.markdown(f"""
                 <div class="teacher-card">
@@ -380,7 +378,15 @@ elif page == "👨‍🏫 Lehrer":
             with col2:
                 # Stats for this teacher
                 teacher_events = filter_events_by_person(calendar_events, teacher.get("name", ""))
-                upcoming_events = [e for e in teacher_events if datetime.fromisoformat(e.get("start", "").replace('Z', '+00:00')) > datetime.now()]
+                upcoming_events = []
+                for e in teacher_events:
+                    try:
+                        event_date = datetime.fromisoformat(e.get("start", "").replace('Z', '+00:00'))
+                        if event_date > datetime.now():
+                            upcoming_events.append(e)
+                    except:
+                        pass
+                
                 unique_students = len(set([e.get("student", "") for e in teacher_events if e.get("student")]))
                 
                 col_a, col_b, col_c = st.columns(3)
@@ -397,7 +403,12 @@ elif page == "👨‍🏫 Lehrer":
             st.subheader(f"📅 Termine von {teacher.get('name', 'Unbekannt')}")
             
             if teacher_events:
-                for event in sorted(teacher_events, key=lambda x: x.get("start", ""))[:10]:
+                try:
+                    sorted_events = sorted(teacher_events, key=lambda x: x.get("start", ""), reverse=True)[:10]
+                except:
+                    sorted_events = teacher_events[:10]
+                
+                for event in sorted_events:
                     st.markdown(f"""
                     <div class="event-item">
                         <h4>{event.get('summary', 'Termin')}</h4>
@@ -415,6 +426,11 @@ elif page == "👨‍🏫 Lehrer":
             st.subheader("🔜 Nächste Termine")
             
             if upcoming_events:
+                try:
+                    upcoming_events = sorted(upcoming_events, key=lambda x: x.get("start", ""))[:5]
+                except:
+                    upcoming_events = upcoming_events[:5]
+                
                 df_upcoming = pd.DataFrame([
                     {
                         "Datum": format_datetime(e.get("start", "")),
@@ -422,7 +438,7 @@ elif page == "👨‍🏫 Lehrer":
                         "Fach": e.get("subject", "N/A"),
                         "Thema": e.get("description", "Keine Beschreibung")
                     }
-                    for e in sorted(upcoming_events, key=lambda x: x.get("start", ""))[:5]
+                    for e in upcoming_events
                 ])
                 st.dataframe(df_upcoming, use_container_width=True)
             else:
@@ -432,7 +448,7 @@ elif page == "👨‍🏫 Lehrer":
 st.sidebar.markdown("---")
 st.sidebar.info(f"""
 **Nachhilfefirma Dashboard**  
-Version 2.0  
+Version 2.1  
 Letzte Aktualisierung: {datetime.now().strftime("%d.%m.%Y %H:%M")}
 """)
 
@@ -441,3 +457,4 @@ with st.sidebar.expander("🔌 API Status"):
     st.write(f"📅 Kalender Events: {len(calendar_events)}")
     st.write(f"👨‍🎓 Schüler: {len(students)}")
     st.write(f"👨‍🏫 Lehrer: {len(teachers)}")
+    st.write(f"🌐 API: {API_BASE_URL}")
