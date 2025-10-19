@@ -223,20 +223,27 @@ elif page == "👨‍🏫 Lehrer":
 # ➕ Neuer Termin
 elif page == "➕ Neuer Termin":
     st.title("➕ Neuen Termin erstellen")
+
+    # Standardwerte nur einmal setzen
+    now = datetime.now()
+    default_start_time = datetime(now.year, now.month, now.day, 8, 0)  # z.B. 08:00 Uhr
+    default_end_time = datetime(now.year, now.month, now.day, 9, 0)    # z.B. 09:00 Uhr
+
     with st.form("create_event"):
         title = st.text_input("Titel")
         student = st.text_input("Schüler")
         teacher = st.text_input("Lehrer")
         subject = st.text_input("Thema")
 
-        start_date = st.date_input("Startdatum", datetime.now().date())
-        start_time = st.time_input("Startzeit", datetime.now().time())
-        end_date = st.date_input("Enddatum", datetime.now().date())
-        end_time = st.time_input("Endzeit", datetime.now().time())
+        start_date = st.date_input("Startdatum", now.date())
+        start_time = st.time_input("Startzeit", default_start_time.time())
+        end_date = st.date_input("Enddatum", now.date())
+        end_time = st.time_input("Endzeit", default_end_time.time())
 
         submit = st.form_submit_button("Termin erstellen")
 
         if submit:
+            # Datum + Zeit kombinieren
             start_dt = datetime.combine(start_date, start_time)
             end_dt = datetime.combine(end_date, end_time)
 
@@ -249,8 +256,12 @@ elif page == "➕ Neuer Termin":
             }
 
             response = requests.post(API_BASE_URL, json=payload)
-            st.success("Termin wurde erstellt!")
+            if response.status_code == 200:
+                st.success("✅ Termin wurde erstellt!")
+            else:
+                st.error(f"Fehler beim Erstellen: {response.status_code} – {response.text}")
             st.write("API Response:", response.text)
+
 
 # Footer
 st.sidebar.markdown("---")
