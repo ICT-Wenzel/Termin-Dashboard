@@ -40,19 +40,22 @@ except Exception:
     """)
     st.stop()
 
-# API Request
+import json
+
 def api_request(params=None):
+    """API-Request – erkennt automatisch, ob n8n JSON oder Text sendet"""
     try:
         response = requests.get(API_BASE_URL, params=params, timeout=15)
         if response.status_code == 200:
             try:
                 data = response.json()
             except ValueError:
-                # Wenn der Body kein direktes JSON ist, manuell parsen
+                # Falls kein korrektes JSON, Text manuell parsen
                 data = json.loads(response.text)
 
+            # Debug-Ausgabe in der Sidebar
             with st.sidebar.expander("📦 API Response (Debug)"):
-                st.write(type(data))
+                st.write("Datentyp:", type(data))
                 st.json(data)
             return data
         else:
@@ -78,19 +81,22 @@ def fetch_calendar():
         except Exception:
             return []
 
-    # Wenn n8n nur ein einzelnes Objekt liefert
+    # Wenn n8n ein einzelnes Objekt liefert
     if isinstance(data, dict):
-        # Suche nach Event-Arrays in Feldern
+        # Suche nach bekannten Schlüsseln
         for key in ["events", "calendar", "body", "data"]:
             if key in data and isinstance(data[key], list):
                 return data[key]
+
         # Einzelnes Event?
         if "id" in data and "summary" in data:
             return [data]
-        # Fallback: falls verschachtelt
+
+        # Fallback: evtl. verschachtelt
         inner_lists = [v for v in data.values() if isinstance(v, list)]
         if inner_lists:
             return inner_lists[0]
+
         return []
 
     # Wenn es eine Liste ist — perfekt!
