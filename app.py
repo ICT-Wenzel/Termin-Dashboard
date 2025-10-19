@@ -64,14 +64,14 @@ except Exception as e:
     st.stop()
 
 # API Functions
-def api_request(endpoint, params=None):
+def api_request(params=None):
     """Generische API-Anfrage"""
     try:
-        url = f"{API_BASE_URL}/{endpoint}"
+        url = API_BASE_URL
         
         # Debug-Info
         with st.sidebar:
-            st.write(f"🔗 **API Call:** `{endpoint}`")
+            st.write(f"🔗 **API Call:** `{url}`")
             if params:
                 st.write(f"📝 **Params:** {params}")
         
@@ -86,7 +86,13 @@ def api_request(endpoint, params=None):
                 st.error(f"Response: {response.text[:200]}")
         
         if response.status_code == 200:
-            return response.json()
+            data = response.json()
+            
+            # Debug: Zeige Response-Struktur
+            with st.sidebar.expander("📦 API Response (Debug)"):
+                st.json(data)
+            
+            return data
         else:
             st.error(f"API Fehler: Status {response.status_code}")
             return None
@@ -107,11 +113,11 @@ def api_request(endpoint, params=None):
 @st.cache_data(ttl=300)
 def fetch_calendar():
     """Holt alle Kalender-Events"""
-    data = api_request("calendar")
+    data = api_request(params={"type": "calendar"})
     if data:
-        # Falls Response ein Objekt mit "events" key ist
-        if isinstance(data, dict) and "events" in data:
-            return data["events"]
+        # Falls Response ein Objekt mit "events" oder "calendar" key ist
+        if isinstance(data, dict):
+            return data.get("calendar", data.get("events", []))
         # Falls Response direkt ein Array ist
         elif isinstance(data, list):
             return data
@@ -120,11 +126,11 @@ def fetch_calendar():
 @st.cache_data(ttl=600)
 def fetch_students():
     """Holt alle Schüler"""
-    data = api_request("students")
+    data = api_request(params={"type": "students"})
     if data:
         # Falls Response ein Objekt mit "students" key ist
-        if isinstance(data, dict) and "students" in data:
-            return data["students"]
+        if isinstance(data, dict):
+            return data.get("students", [])
         # Falls Response direkt ein Array ist
         elif isinstance(data, list):
             return data
@@ -133,11 +139,11 @@ def fetch_students():
 @st.cache_data(ttl=600)
 def fetch_teachers():
     """Holt alle Lehrer"""
-    data = api_request("teachers")
+    data = api_request(params={"type": "teachers"})
     if data:
         # Falls Response ein Objekt mit "teachers" key ist
-        if isinstance(data, dict) and "teachers" in data:
-            return data["teachers"]
+        if isinstance(data, dict):
+            return data.get("teachers", [])
         # Falls Response direkt ein Array ist
         elif isinstance(data, list):
             return data
@@ -146,13 +152,13 @@ def fetch_teachers():
 @st.cache_data(ttl=300)
 def fetch_student_data(student_name):
     """Holt alle Daten zu einem spezifischen Schüler"""
-    data = api_request("student", params={"name": student_name})
+    data = api_request(params={"type": "student", "name": student_name})
     return data if data else {"info": {}, "events": []}
 
 @st.cache_data(ttl=300)
 def fetch_teacher_data(teacher_name):
     """Holt alle Daten zu einem spezifischen Lehrer"""
-    data = api_request("teacher", params={"name": teacher_name})
+    data = api_request(params={"type": "teacher", "name": teacher_name})
     return data if data else {"info": {}, "events": []}
 
 def format_datetime(dt_string):
