@@ -15,22 +15,28 @@ st.set_page_config(
 st.markdown("""
 <style>
     .event-item {
-        background: white;
+        background: #2f3542;               /* dunkles Grau */
+        color: #f1f2f6;                    /* helle Schrift */
         padding: 15px;
         border-radius: 8px;
-        margin: 8px 0;
-        border-left: 4px solid #1f77b4;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        margin: 10px 0;
+        border-left: 4px solid #70a1ff;    /* hellblauer Akzent */
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
     }
-    .stat-box {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 20px;
-        border-radius: 10px;
-        text-align: center;
+    .event-item a {
+        color: #70a1ff;
+    }
+    .event-item h4 {
+        color: #dfe4ea;
+        margin-bottom: 6px;
+    }
+    .event-item p {
+        margin: 3px 0;
+        font-size: 0.95rem;
     }
 </style>
 """, unsafe_allow_html=True)
+
 
 # Load Secrets
 try:
