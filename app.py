@@ -64,43 +64,96 @@ except Exception as e:
     st.stop()
 
 # API Functions
-@st.cache_data(ttl=300)
-def fetch_all_data():
-    """Holt alle Daten von der API (Kalender, Schüler, Lehrer)"""
+def api_request(endpoint, params=None):
+    """Generische API-Anfrage"""
     try:
-        response = requests.get(f"{API_BASE_URL}/data", timeout=15)
+        url = f"{API_BASE_URL}/{endpoint}"
+        
+        # Debug-Info
+        with st.sidebar:
+            st.write(f"🔗 **API Call:** `{endpoint}`")
+            if params:
+                st.write(f"📝 **Params:** {params}")
+        
+        response = requests.get(url, params=params, timeout=15)
+        
+        # Debug: Response Status
+        with st.sidebar:
+            if response.status_code == 200:
+                st.success(f"✅ Status: {response.status_code}")
+            else:
+                st.error(f"❌ Status: {response.status_code}")
+                st.error(f"Response: {response.text[:200]}")
         
         if response.status_code == 200:
-            data = response.json()
-            
-            # Erwarte folgendes Format:
-            # {
-            #   "calendar": [...],
-            #   "students": [...],
-            #   "teachers": [...]
-            # }
-            
-            return {
-                "calendar": data.get("calendar", data.get("events", [])),
-                "students": data.get("students", []),
-                "teachers": data.get("teachers", [])
-            }
+            return response.json()
         else:
             st.error(f"API Fehler: Status {response.status_code}")
-            return {"calendar": [], "students": [], "teachers": []}
+            return None
             
+    except requests.exceptions.Timeout:
+        st.error("⏱️ Timeout: API antwortet nicht")
+        return None
+    except requests.exceptions.ConnectionError:
+        st.error("🔌 Verbindungsfehler: Kann API nicht erreichen")
+        return None
     except requests.exceptions.RequestException as e:
-        st.error(f"Verbindungsfehler zur API: {str(e)}")
-        return {"calendar": [], "students": [], "teachers": []}
-    except json.JSONDecodeError:
-        st.error("Fehler beim Parsen der API Antwort")
-        return {"calendar": [], "students": [], "teachers": []}
+        st.error(f"❌ Request-Fehler: {str(e)}")
+        return None
+    except json.JSONDecodeError as e:
+        st.error(f"📋 JSON Parse-Fehler: {str(e)}")
+        return None
 
-def filter_events_by_person(events, person_name):
-    """Filtert Events nach Person (Schüler oder Lehrer)"""
-    if not events or not person_name:
-        return []
-    return [e for e in events if person_name in e.get("student", "") or person_name in e.get("teacher", "")]
+@st.cache_data(ttl=300)
+def fetch_calendar():
+    """Holt alle Kalender-Events"""
+    data = api_request("calendar")
+    if data:
+        # Falls Response ein Objekt mit "events" key ist
+        if isinstance(data, dict) and "events" in data:
+            return data["events"]
+        # Falls Response direkt ein Array ist
+        elif isinstance(data, list):
+            return data
+    return []
+
+@st.cache_data(ttl=600)
+def fetch_students():
+    """Holt alle Schüler"""
+    data = api_request("students")
+    if data:
+        # Falls Response ein Objekt mit "students" key ist
+        if isinstance(data, dict) and "students" in data:
+            return data["students"]
+        # Falls Response direkt ein Array ist
+        elif isinstance(data, list):
+            return data
+    return []
+
+@st.cache_data(ttl=600)
+def fetch_teachers():
+    """Holt alle Lehrer"""
+    data = api_request("teachers")
+    if data:
+        # Falls Response ein Objekt mit "teachers" key ist
+        if isinstance(data, dict) and "teachers" in data:
+            return data["teachers"]
+        # Falls Response direkt ein Array ist
+        elif isinstance(data, list):
+            return data
+    return []
+
+@st.cache_data(ttl=300)
+def fetch_student_data(student_name):
+    """Holt alle Daten zu einem spezifischen Schüler"""
+    data = api_request("student", params={"name": student_name})
+    return data if data else {"info": {}, "events": []}
+
+@st.cache_data(ttl=300)
+def fetch_teacher_data(teacher_name):
+    """Holt alle Daten zu einem spezifischen Lehrer"""
+    data = api_request("teacher", params={"name": teacher_name})
+    return data if data else {"info": {}, "events": []}
 
 def format_datetime(dt_string):
     """Formatiert ISO DateTime String"""
@@ -125,21 +178,14 @@ page = st.sidebar.radio(
     ["📅 Kalender", "👨‍🎓 Schüler", "👨‍🏫 Lehrer"]
 )
 
-# Load All Data from API
-with st.spinner("Lade Daten von API..."):
-    all_data = fetch_all_data()
-    calendar_events = all_data.get("calendar", [])
-    students = all_data.get("students", [])
-    teachers = all_data.get("teachers", [])
-
-# Check if data is loaded
-if not calendar_events and not students and not teachers:
-    st.error("Keine Daten von der API geladen. Bitte überprüfe deine API-URL und die Verbindung.")
-    st.stop()
-
 # PAGE 1: KALENDER
 if page == "📅 Kalender":
     st.title("📅 Kalender Übersicht")
+    
+    with st.spinner("Lade Kalenderdaten..."):
+        calendar_events = fetch_calendar()
+        students = fetch_students()
+        teachers = fetch_teachers()
     
     if not calendar_events:
         st.warning("Keine Kalender-Events gefunden.")
@@ -178,7 +224,7 @@ if page == "📅 Kalender":
             for e in calendar_events:
                 try:
                     event_date = datetime.fromisoformat(e.get("start", "").replace('Z', '+00:00'))
-                    if event_date < week_end and event_date > datetime.now():
+                    if datetime.now() < event_date < week_end:
                         week_events.append(e)
                 except:
                     pass
@@ -245,6 +291,9 @@ if page == "📅 Kalender":
 elif page == "👨‍🎓 Schüler":
     st.title("👨‍🎓 Schüler Übersicht")
     
+    with st.spinner("Lade Schülerliste..."):
+        students = fetch_students()
+    
     if not students:
         st.warning("Keine Schüler gefunden.")
     else:
@@ -254,29 +303,40 @@ elif page == "👨‍🎓 Schüler":
             [s.get("name", "Unbekannt") for s in students]
         )
         
-        student = next((s for s in students if s.get("name") == selected_student), None)
+        # Fetch detailed student data
+        with st.spinner(f"Lade Daten von {selected_student}..."):
+            student_data = fetch_student_data(selected_student)
         
-        if student:
+        # Student Info aus der Liste
+        student_info = next((s for s in students if s.get("name") == selected_student), {})
+        
+        # Merge mit API-Daten falls vorhanden
+        if student_data and "info" in student_data:
+            student_info.update(student_data["info"])
+        
+        # Events aus API-Daten
+        student_events = student_data.get("events", []) if student_data else []
+        
+        if student_info:
             # Student Info Card
             col1, col2 = st.columns([1, 2])
             
             with col1:
-                subjects = student.get('subjects', [])
+                subjects = student_info.get('subjects', [])
                 subjects_str = ', '.join(subjects) if isinstance(subjects, list) else str(subjects)
                 
                 st.markdown(f"""
                 <div class="student-card">
-                    <h2>{student.get('name', 'Unbekannt')}</h2>
-                    <p><strong>📧 Email:</strong> {student.get('email', 'N/A')}</p>
-                    <p><strong>📱 Telefon:</strong> {student.get('phone', 'N/A')}</p>
-                    <p><strong>🎓 Klasse:</strong> {student.get('grade', 'N/A')}</p>
+                    <h2>{student_info.get('name', 'Unbekannt')}</h2>
+                    <p><strong>📧 Email:</strong> {student_info.get('email', 'N/A')}</p>
+                    <p><strong>📱 Telefon:</strong> {student_info.get('phone', 'N/A')}</p>
+                    <p><strong>🎓 Klasse:</strong> {student_info.get('grade', 'N/A')}</p>
                     <p><strong>📚 Fächer:</strong> {subjects_str}</p>
                 </div>
                 """, unsafe_allow_html=True)
             
             with col2:
                 # Stats for this student
-                student_events = filter_events_by_person(calendar_events, student.get("name", ""))
                 upcoming_events = []
                 for e in student_events:
                     try:
@@ -298,7 +358,7 @@ elif page == "👨‍🎓 Schüler":
             st.markdown("---")
             
             # Calendar View for Student
-            st.subheader(f"📅 Termine von {student.get('name', 'Unbekannt')}")
+            st.subheader(f"📅 Termine von {student_info.get('name', 'Unbekannt')}")
             
             if student_events:
                 try:
@@ -346,6 +406,9 @@ elif page == "👨‍🎓 Schüler":
 elif page == "👨‍🏫 Lehrer":
     st.title("👨‍🏫 Lehrer Übersicht")
     
+    with st.spinner("Lade Lehrerliste..."):
+        teachers = fetch_teachers()
+    
     if not teachers:
         st.warning("Keine Lehrer gefunden.")
     else:
@@ -355,29 +418,40 @@ elif page == "👨‍🏫 Lehrer":
             [t.get("name", "Unbekannt") for t in teachers]
         )
         
-        teacher = next((t for t in teachers if t.get("name") == selected_teacher), None)
+        # Fetch detailed teacher data
+        with st.spinner(f"Lade Daten von {selected_teacher}..."):
+            teacher_data = fetch_teacher_data(selected_teacher)
         
-        if teacher:
+        # Teacher Info aus der Liste
+        teacher_info = next((t for t in teachers if t.get("name") == selected_teacher), {})
+        
+        # Merge mit API-Daten falls vorhanden
+        if teacher_data and "info" in teacher_data:
+            teacher_info.update(teacher_data["info"])
+        
+        # Events aus API-Daten
+        teacher_events = teacher_data.get("events", []) if teacher_data else []
+        
+        if teacher_info:
             # Teacher Info Card
             col1, col2 = st.columns([1, 2])
             
             with col1:
-                subjects = teacher.get('subjects', [])
+                subjects = teacher_info.get('subjects', [])
                 subjects_str = ', '.join(subjects) if isinstance(subjects, list) else str(subjects)
                 
                 st.markdown(f"""
                 <div class="teacher-card">
-                    <h2>{teacher.get('name', 'Unbekannt')}</h2>
-                    <p><strong>📧 Email:</strong> {teacher.get('email', 'N/A')}</p>
-                    <p><strong>📱 Telefon:</strong> {teacher.get('phone', 'N/A')}</p>
+                    <h2>{teacher_info.get('name', 'Unbekannt')}</h2>
+                    <p><strong>📧 Email:</strong> {teacher_info.get('email', 'N/A')}</p>
+                    <p><strong>📱 Telefon:</strong> {teacher_info.get('phone', 'N/A')}</p>
                     <p><strong>📚 Fächer:</strong> {subjects_str}</p>
-                    <p><strong>💼 Erfahrung:</strong> {teacher.get('experience', 'N/A')}</p>
+                    <p><strong>💼 Erfahrung:</strong> {teacher_info.get('experience', 'N/A')}</p>
                 </div>
                 """, unsafe_allow_html=True)
             
             with col2:
                 # Stats for this teacher
-                teacher_events = filter_events_by_person(calendar_events, teacher.get("name", ""))
                 upcoming_events = []
                 for e in teacher_events:
                     try:
@@ -400,7 +474,7 @@ elif page == "👨‍🏫 Lehrer":
             st.markdown("---")
             
             # Calendar View for Teacher
-            st.subheader(f"📅 Termine von {teacher.get('name', 'Unbekannt')}")
+            st.subheader(f"📅 Termine von {teacher_info.get('name', 'Unbekannt')}")
             
             if teacher_events:
                 try:
@@ -448,13 +522,6 @@ elif page == "👨‍🏫 Lehrer":
 st.sidebar.markdown("---")
 st.sidebar.info(f"""
 **Nachhilfefirma Dashboard**  
-Version 2.1  
+Version 3.0 - API-basiert  
 Letzte Aktualisierung: {datetime.now().strftime("%d.%m.%Y %H:%M")}
 """)
-
-# API Status
-with st.sidebar.expander("🔌 API Status"):
-    st.write(f"📅 Kalender Events: {len(calendar_events)}")
-    st.write(f"👨‍🎓 Schüler: {len(students)}")
-    st.write(f"👨‍🏫 Lehrer: {len(teachers)}")
-    st.write(f"🌐 API: {API_BASE_URL}")
