@@ -5,7 +5,6 @@ import re
 import pandas as pd
 import json
 
-
 # Page Config
 st.set_page_config(
     page_title="Nachhilfe Dashboard",
@@ -40,8 +39,9 @@ except Exception:
     """)
     st.stop()
 
-import json
-
+# ---------------------------
+# API Request Funktion
+# ---------------------------
 def api_request(params=None):
     """API-Request – erkennt automatisch, ob n8n JSON oder Text sendet"""
     try:
@@ -50,10 +50,9 @@ def api_request(params=None):
             try:
                 data = response.json()
             except ValueError:
-                # Falls kein korrektes JSON, Text manuell parsen
                 data = json.loads(response.text)
 
-            # Debug-Ausgabe in der Sidebar
+            # Debug-Ausgabe in Sidebar
             with st.sidebar.expander("📦 API Response (Debug)"):
                 st.write("Datentyp:", type(data))
                 st.json(data)
@@ -65,7 +64,9 @@ def api_request(params=None):
         st.error(f"API Fehler: {e}")
         return []
 
-
+# ---------------------------
+# Kalenderdaten holen
+# ---------------------------
 @st.cache_data(ttl=300)
 def fetch_calendar():
     """Holt alle Kalender-Events (robust gegen n8n JSON-String oder Object)"""
@@ -74,37 +75,31 @@ def fetch_calendar():
     if not data:
         return []
 
-    # Wenn n8n einen JSON-String zurückgibt, nochmals versuchen
     if isinstance(data, str):
         try:
             data = json.loads(data)
         except Exception:
             return []
 
-    # Wenn n8n ein einzelnes Objekt liefert
     if isinstance(data, dict):
-        # Suche nach bekannten Schlüsseln
         for key in ["events", "calendar", "body", "data"]:
             if key in data and isinstance(data[key], list):
                 return data[key]
-
-        # Einzelnes Event?
         if "id" in data and "summary" in data:
             return [data]
-
-        # Fallback: evtl. verschachtelt
         inner_lists = [v for v in data.values() if isinstance(v, list)]
         if inner_lists:
             return inner_lists[0]
-
         return []
 
-    # Wenn es eine Liste ist — perfekt!
     if isinstance(data, list):
         return data
 
     return []
 
+# ---------------------------
+# Hilfsfunktionen
+# ---------------------------
 def format_datetime(dt_string):
     try:
         dt = datetime.fromisoformat(dt_string.replace('Z', '+00:00'))
@@ -123,7 +118,9 @@ def parse_description(desc):
             info[key] = match.group(1).strip()
     return info
 
+# ---------------------------
 # Sidebar Navigation
+# ---------------------------
 st.sidebar.title("📚 Nachhilfe Dashboard")
 
 if st.sidebar.button("🔄 Aktualisieren"):
@@ -135,21 +132,62 @@ page = st.sidebar.radio(
     ["📅 Kalender", "👨‍🎓 Schüler", "👨‍🏫 Lehrer"]
 )
 
-# Kalenderdaten holen
+# ---------------------------
+# Neuen Termin erstellen
+# ---------------------------
+st.sidebar.markdown("---")
+st.sidebar.subheader("➕ Neuen Termin erstellen")
+
+with st.sidebar.form("create_event_form"):
+    new_summary = st.text_input("Titel des Termins", "Neuer Termin")
+    new_teacher = st.text_input("Lehrer", "")
+    new_student = st.text_input("Schüler", "")
+    new_topic = st.text_input("Thema", "")
+    new_start = st.datetime_input("Startzeit", datetime.now())
+    new_end = st.datetime_input("Endzeit", datetime.now() + timedelta(hours=1))
+    
+    submit = st.form_submit_button("Termin erstellen")
+
+if submit:
+    if not (new_teacher and new_student and new_topic):
+        st.error("Bitte Lehrer, Schüler und Thema ausfüllen!")
+    else:
+        description = f"Lehrer: {new_teacher}\nSchüler: {new_student}\nThema: {new_topic}"
+        payload = {
+            "type": "create",
+            "summary": new_summary,
+            "description": description,
+            "start": new_start.isoformat(),
+            "end": new_end.isoformat(),
+        }
+        try:
+            r = requests.post(API_BASE_URL, json=payload, timeout=15)
+            if r.status_code == 200:
+                st.success("✅ Termin erfolgreich erstellt!")
+                st.balloons()
+                st.cache_data.clear()
+            else:
+                st.error(f"Fehler beim Erstellen: {r.status_code} - {r.text}")
+        except Exception as e:
+            st.error(f"API Fehler: {e}")
+
+# ---------------------------
+# Kalenderdaten laden
+# ---------------------------
 with st.spinner("Lade Kalenderdaten..."):
     events = fetch_calendar()
 
-# Falls keine Daten
 if not events:
     st.warning("Keine Kalender-Events gefunden.")
     st.stop()
 
-# Alle Events erweitern mit Info aus Beschreibung
 for e in events:
     info = parse_description(e.get("description", ""))
     e.update(info)
 
+# ---------------------------
 # 📅 Kalender Übersicht
+# ---------------------------
 if page == "📅 Kalender":
     st.title("📅 Kalender Übersicht")
 
@@ -159,16 +197,12 @@ if page == "📅 Kalender":
 
     today_events = [
         e for e in events
-        if "start" in e and datetime.fromisoformat(
-            e["start"]["dateTime"].replace("Z", "+00:00")
-        ).date() == today
+        if "start" in e and datetime.fromisoformat(e["start"]["dateTime"].replace("Z", "+00:00")).date() == today
     ]
 
     week_events = [
         e for e in events
-        if "start" in e and today <= datetime.fromisoformat(
-            e["start"]["dateTime"].replace("Z", "+00:00")
-        ).date() <= week_end
+        if "start" in e and today <= datetime.fromisoformat(e["start"]["dateTime"].replace("Z", "+00:00")).date() <= week_end
     ]
 
     with col1:
@@ -179,7 +213,6 @@ if page == "📅 Kalender":
         st.markdown(f"<div class='stat-box'><h2>{len(week_events)}</h2><p>Diese Woche</p></div>", unsafe_allow_html=True)
 
     st.markdown("---")
-
     df = pd.DataFrame([
         {
             "Datum": format_datetime(e["start"]["dateTime"]),
@@ -193,7 +226,9 @@ if page == "📅 Kalender":
     ])
     st.dataframe(df, use_container_width=True, hide_index=True)
 
+# ---------------------------
 # 👨‍🎓 Schüler Übersicht
+# ---------------------------
 elif page == "👨‍🎓 Schüler":
     st.title("👨‍🎓 Schüler Übersicht")
     schueler = sorted(set([e.get("Schüler") for e in events if e.get("Schüler")]))
@@ -216,7 +251,9 @@ elif page == "👨‍🎓 Schüler":
     ])
     st.dataframe(df, use_container_width=True, hide_index=True)
 
+# ---------------------------
 # 👨‍🏫 Lehrer Übersicht
+# ---------------------------
 elif page == "👨‍🏫 Lehrer":
     st.title("👨‍🏫 Lehrer Übersicht")
     lehrer = sorted(set([e.get("Lehrer") for e in events if e.get("Lehrer")]))
@@ -239,10 +276,12 @@ elif page == "👨‍🏫 Lehrer":
     ])
     st.dataframe(df, use_container_width=True, hide_index=True)
 
+# ---------------------------
 # Footer
+# ---------------------------
 st.sidebar.markdown("---")
 st.sidebar.info(f"""
 **Nachhilfe Dashboard**  
-Version 2.1 – robust & performant  
+Version 2.2 – mit Terminerstellung  
 Letzte Aktualisierung: {datetime.now().strftime("%d.%m.%Y %H:%M")}
 """)
