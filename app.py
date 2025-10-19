@@ -42,23 +42,27 @@ except Exception:
 # ---------------------------
 # API Request Funktion
 # ---------------------------
-def api_request(params=None):
-    """API-Request – erkennt automatisch, ob n8n JSON oder Text sendet"""
+def api_request(payload=None):
+    """API-Request via POST – erkennt automatisch JSON"""
+    if payload is None:
+        payload = {}
+
     try:
-        response = requests.get(API_BASE_URL, params=params, timeout=15)
+        response = requests.post(API_BASE_URL, json=payload, timeout=15)
         if response.status_code == 200:
             try:
                 data = response.json()
             except ValueError:
                 data = json.loads(response.text)
 
-            # Debug-Ausgabe in Sidebar
+            # Debug-Ausgabe
             with st.sidebar.expander("📦 API Response (Debug)"):
                 st.write("Datentyp:", type(data))
                 st.json(data)
+
             return data
         else:
-            st.error(f"Fehler {response.status_code}")
+            st.error(f"Fehler {response.status_code} - {response.text}")
             return []
     except Exception as e:
         st.error(f"API Fehler: {e}")
@@ -69,8 +73,9 @@ def api_request(params=None):
 # ---------------------------
 @st.cache_data(ttl=300)
 def fetch_calendar():
-    """Holt alle Kalender-Events (robust gegen n8n JSON-String oder Object)"""
-    data = api_request(params={"type": "calendar"})
+    """Holt alle Kalender-Events via POST"""
+    payload = {"type": "calendar"}  # n8n weiß, dass es Kalender-Daten senden soll
+    data = api_request(payload=payload)
 
     if not data:
         return []
@@ -85,11 +90,14 @@ def fetch_calendar():
         for key in ["events", "calendar", "body", "data"]:
             if key in data and isinstance(data[key], list):
                 return data[key]
+
         if "id" in data and "summary" in data:
             return [data]
+
         inner_lists = [v for v in data.values() if isinstance(v, list)]
         if inner_lists:
             return inner_lists[0]
+
         return []
 
     if isinstance(data, list):
@@ -260,7 +268,6 @@ if page == "➕ Neuer Termin":
         if not (new_teacher and new_student and new_topic):
             st.error("Bitte Lehrer, Schüler und Thema ausfüllen!")
         else:
-            # Kombiniere Datum + Uhrzeit zu ISO-Format
             start_dt = datetime.combine(new_start, new_start_time)
             end_dt = datetime.combine(new_end, new_end_time)
 
@@ -272,16 +279,14 @@ if page == "➕ Neuer Termin":
                 "start": start_dt.isoformat(),
                 "end": end_dt.isoformat(),
             }
-            try:
-                r = requests.post(API_BASE_URL, json=payload, timeout=15)
-                if r.status_code == 200:
-                    st.success("✅ Termin erfolgreich erstellt!")
-                    st.balloons()
-                    st.cache_data.clear()
-                else:
-                    st.error(f"Fehler beim Erstellen: {r.status_code} - {r.text}")
-            except Exception as e:
-                st.error(f"API Fehler: {e}")
+
+            data = api_request(payload=payload)
+            if data:
+                st.success("✅ Termin erfolgreich erstellt!")
+                st.balloons()
+                st.cache_data.clear()
+            else:
+                st.error("Fehler beim Erstellen des Termins.")
 
 # ---------------------------
 # Footer
