@@ -129,47 +129,8 @@ if st.sidebar.button("🔄 Aktualisieren"):
 
 page = st.sidebar.radio(
     "Navigation",
-    ["📅 Kalender", "👨‍🎓 Schüler", "👨‍🏫 Lehrer"]
+    ["📅 Kalender", "👨‍🎓 Schüler", "👨‍🏫 Lehrer", "➕ Neuer Termin"]
 )
-
-# ---------------------------
-# Neuen Termin erstellen
-# ---------------------------
-st.sidebar.markdown("---")
-st.sidebar.subheader("➕ Neuen Termin erstellen")
-
-with st.sidebar.form("create_event_form"):
-    new_summary = st.text_input("Titel des Termins", "Neuer Termin")
-    new_teacher = st.text_input("Lehrer", "")
-    new_student = st.text_input("Schüler", "")
-    new_topic = st.text_input("Thema", "")
-    new_start = st.datetime_input("Startzeit", datetime.now())
-    new_end = st.datetime_input("Endzeit", datetime.now() + timedelta(hours=1))
-    
-    submit = st.form_submit_button("Termin erstellen")
-
-if submit:
-    if not (new_teacher and new_student and new_topic):
-        st.error("Bitte Lehrer, Schüler und Thema ausfüllen!")
-    else:
-        description = f"Lehrer: {new_teacher}\nSchüler: {new_student}\nThema: {new_topic}"
-        payload = {
-            "type": "create",
-            "summary": new_summary,
-            "description": description,
-            "start": new_start.isoformat(),
-            "end": new_end.isoformat(),
-        }
-        try:
-            r = requests.post(API_BASE_URL, json=payload, timeout=15)
-            if r.status_code == 200:
-                st.success("✅ Termin erfolgreich erstellt!")
-                st.balloons()
-                st.cache_data.clear()
-            else:
-                st.error(f"Fehler beim Erstellen: {r.status_code} - {r.text}")
-        except Exception as e:
-            st.error(f"API Fehler: {e}")
 
 # ---------------------------
 # Kalenderdaten laden
@@ -275,6 +236,52 @@ elif page == "👨‍🏫 Lehrer":
         for e in teacher_events
     ])
     st.dataframe(df, use_container_width=True, hide_index=True)
+
+
+# ---------------------------
+# Neue Termin Seite
+# ---------------------------
+if page == "➕ Neuer Termin":
+    st.title("➕ Neuen Termin erstellen")
+
+    with st.form("create_event_form"):
+        new_summary = st.text_input("Titel des Termins", "Neuer Termin")
+        new_teacher = st.text_input("Lehrer", "")
+        new_student = st.text_input("Schüler", "")
+        new_topic = st.text_input("Thema", "")
+        new_start = st.date_input("Startdatum", datetime.now().date())
+        new_start_time = st.time_input("Startzeit", datetime.now().time())
+        new_end = st.date_input("Enddatum", datetime.now().date())
+        new_end_time = st.time_input("Endzeit", (datetime.now() + timedelta(hours=1)).time())
+
+        submit = st.form_submit_button("Termin erstellen")
+
+    if submit:
+        if not (new_teacher and new_student and new_topic):
+            st.error("Bitte Lehrer, Schüler und Thema ausfüllen!")
+        else:
+            # Kombiniere Datum + Uhrzeit zu ISO-Format
+            start_dt = datetime.combine(new_start, new_start_time)
+            end_dt = datetime.combine(new_end, new_end_time)
+
+            description = f"Lehrer: {new_teacher}\nSchüler: {new_student}\nThema: {new_topic}"
+            payload = {
+                "type": "create",
+                "summary": new_summary,
+                "description": description,
+                "start": start_dt.isoformat(),
+                "end": end_dt.isoformat(),
+            }
+            try:
+                r = requests.post(API_BASE_URL, json=payload, timeout=15)
+                if r.status_code == 200:
+                    st.success("✅ Termin erfolgreich erstellt!")
+                    st.balloons()
+                    st.cache_data.clear()
+                else:
+                    st.error(f"Fehler beim Erstellen: {r.status_code} - {r.text}")
+            except Exception as e:
+                st.error(f"API Fehler: {e}")
 
 # ---------------------------
 # Footer
