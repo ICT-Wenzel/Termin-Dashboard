@@ -3,6 +3,8 @@ import requests
 from datetime import datetime, timedelta
 import re
 import pandas as pd
+import json
+
 
 # Page Config
 st.set_page_config(
@@ -43,8 +45,14 @@ def api_request(params=None):
     try:
         response = requests.get(API_BASE_URL, params=params, timeout=15)
         if response.status_code == 200:
-            data = response.json()
+            try:
+                data = response.json()
+            except ValueError:
+                # Wenn der Body kein direktes JSON ist, manuell parsen
+                data = json.loads(response.text)
+
             with st.sidebar.expander("📦 API Response (Debug)"):
+                st.write(type(data))
                 st.json(data)
             return data
         else:
@@ -54,25 +62,41 @@ def api_request(params=None):
         st.error(f"API Fehler: {e}")
         return []
 
+
 @st.cache_data(ttl=300)
 def fetch_calendar():
-    """Holt alle Kalender-Events (automatisch robust gegen API-Formate)"""
+    """Holt alle Kalender-Events (robust gegen n8n JSON-String oder Object)"""
     data = api_request(params={"type": "calendar"})
-    
+
     if not data:
         return []
-    
-    # n8n gibt evtl. direkt eine Liste oder ein Objekt zurück
-    if isinstance(data, list):
-        return data
-    elif isinstance(data, dict):
-        # Falls es verschachtelt ist (body, data, events etc.)
+
+    # Wenn n8n einen JSON-String zurückgibt, nochmals versuchen
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except Exception:
+            return []
+
+    # Wenn n8n nur ein einzelnes Objekt liefert
+    if isinstance(data, dict):
+        # Suche nach Event-Arrays in Feldern
         for key in ["events", "calendar", "body", "data"]:
             if key in data and isinstance(data[key], list):
                 return data[key]
-        # Falls einzelnes Event:
+        # Einzelnes Event?
         if "id" in data and "summary" in data:
             return [data]
+        # Fallback: falls verschachtelt
+        inner_lists = [v for v in data.values() if isinstance(v, list)]
+        if inner_lists:
+            return inner_lists[0]
+        return []
+
+    # Wenn es eine Liste ist — perfekt!
+    if isinstance(data, list):
+        return data
+
     return []
 
 def format_datetime(dt_string):
