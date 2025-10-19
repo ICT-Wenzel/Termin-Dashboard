@@ -73,11 +73,24 @@ def api_request(params=None):
 def fetch_calendar():
     """Holt alle Kalender-Events"""
     data = api_request(params={"type": "calendar"})
+    
+    # Wenn direkt eine Liste kommt
     if isinstance(data, list):
         return data
+
+    # Wenn ein einzelnes Event (dict) kommt → in Liste verpacken
     elif isinstance(data, dict):
-        return data.get("events", data.get("calendar", []))
+        # Prüfen, ob es evtl. schon ein 'events' oder 'calendar'-Key gibt
+        if "events" in data:
+            return data["events"]
+        elif "calendar" in data:
+            return data["calendar"]
+        else:
+            # Es ist ein einzelnes Event
+            return [data]
+    
     return []
+
 
 def format_datetime(dt_string):
     """Formatiert ISO DateTime String"""
