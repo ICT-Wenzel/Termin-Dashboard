@@ -174,11 +174,11 @@ if page == "📅 Kalender":
             "Kontakt Schüler": e.get("Kontakt Schüler", "N/A"),
             "Thema": e.get("Thema", "N/A"),
             "Titel": e.get("summary", ""),
-            "Link": f'<a href="{e.get("htmlLink","")}" target="_blank">Öffnen</a>' if e.get("htmlLink") else ""
+            "Link": f"[Öffnen]({e.get('htmlLink','')})" if e.get("htmlLink") else ""
         }
         for e in events
     ])
-    st.write(df.style.format({"Link": lambda x: x}, escape=False), unsafe_allow_html=True)
+    st.dataframe(df, use_container_width=True, hide_index=True)
 
 # 👨‍🎓 Schüler Übersicht
 elif page == "👨‍🎓 Schüler":
