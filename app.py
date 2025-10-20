@@ -173,7 +173,7 @@ if page == "📅 Kalender":
             "Schüler": e.get("Schüler", "N/A"),
             "Kontakt Schüler": e.get("Kontakt Schüler", "N/A"),
             "Thema": e.get("Thema", "N/A"),
-            "Titel": e.get("summary", "")
+            "Titel": e.get("summary", ""),
             "Link": e.get("htmlLink", "")
         }
         for e in events
