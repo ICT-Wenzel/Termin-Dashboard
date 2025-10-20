@@ -174,12 +174,12 @@ if page == "📅 Kalender":
             "Kontakt Schüler": e.get("Kontakt Schüler", "N/A"),
             "Thema": e.get("Thema", "N/A"),
             "Titel": e.get("summary", ""),
-            "Link": f"[Öffnen]({e.get('htmlLink','')})" if e.get("htmlLink") else ""
+            "Link": f'<a href="{e.get("htmlLink","")}" target="_blank">Öffnen</a>' if e.get("htmlLink") else ""
         }
         for e in events
     ])
     st.markdown(
-        df.to_markdown(index=False),
+        df.to_html(escape=False, index=False),
         unsafe_allow_html=True
     )
 
