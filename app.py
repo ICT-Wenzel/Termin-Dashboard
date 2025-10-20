@@ -101,12 +101,14 @@ def format_datetime(dt_string):
 # Parse description
 def parse_description(desc):
     if not desc:
-        return {"Lehrer": None, "Schüler": None, "Thema": None}
+        return {"Lehrer": None, "Schüler": None, "Thema": None, "Kontakt Schüler": None, "Kontakt Lehrer": None}
     info = {}
-    for key in ["Lehrer", "Schüler", "Thema"]:
+    for key in ["Lehrer", "Schüler", "Thema", "Kontakt Schüler", "Kontakt Lehrer"]:
         match = re.search(rf"{key}:\s*([^\n\r]+)", desc)
         if match:
             info[key] = match.group(1).strip()
+        else:
+            info[key] = None
     return info
 
 # Sidebar Navigation
@@ -128,7 +130,9 @@ with st.spinner("Lade Kalenderdaten..."):
 # Alle Events erweitern mit Info aus Beschreibung
 for e in events:
     info = parse_description(e.get("description", ""))
-    e.update(info)
+    for k, v in info.items():
+        if v is not None:
+            e[k] = v
 
 # 📅 Kalender Übersicht
 if page == "📅 Kalender":
@@ -165,14 +169,19 @@ if page == "📅 Kalender":
         {
             "Datum": format_datetime(e["start"]["dateTime"]),
             "Lehrer": e.get("Lehrer", "N/A"),
+            "Kontakt Lehrer": e.get("Kontakt Lehrer", "N/A"),
             "Schüler": e.get("Schüler", "N/A"),
+            "Kontakt Schüler": e.get("Kontakt Schüler", "N/A"),
             "Thema": e.get("Thema", "N/A"),
             "Titel": e.get("summary", ""),
-            "Link": e.get("htmlLink", "")
+            "Link": f"[Öffnen]({e.get('htmlLink','')})" if e.get("htmlLink") else ""
         }
         for e in events
     ])
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.markdown(
+        df.to_markdown(index=False),
+        unsafe_allow_html=True
+    )
 
 # 👨‍🎓 Schüler Übersicht
 elif page == "👨‍🎓 Schüler":
@@ -234,7 +243,8 @@ elif page == "➕ Neuer Termin":
         student = st.text_input("Schüler")
         teacher = st.text_input("Lehrer")
         subject = st.text_input("Thema")
-        contact = st.text_input("Kontakt")
+        contact_student = st.text_input("Kontakt Schüler (E-Mail/Telefon)")
+        contact_teacher = st.text_input("Kontakt Lehrer (E-Mail/Telefon)")
 
         start_date = st.date_input("Startdatum", now.date())
         start_time = st.time_input("Startzeit", default_start_time.time())
@@ -251,7 +261,7 @@ elif page == "➕ Neuer Termin":
             payload = {
                 "type": "create",
                 "summary": title,
-                "description": f"Lehrer: {teacher}\nSchüler: {student}\nThema: {subject}\nKontakt: {contact}",
+                "description": f"Lehrer: {teacher}\nSchüler: {student}\nThema: {subject}\nKontakt Schüler: {contact_student}\nKontakt Lehrer: {contact_teacher}",
                 "start": start_dt.isoformat(),
                 "end": end_dt.isoformat()
             }
