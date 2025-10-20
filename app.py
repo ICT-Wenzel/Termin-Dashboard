@@ -173,15 +173,17 @@ if page == "📅 Kalender":
             "Schüler": e.get("Schüler", "N/A"),
             "Kontakt Schüler": e.get("Kontakt Schüler", "N/A"),
             "Thema": e.get("Thema", "N/A"),
-            "Titel": e.get("summary", ""),
-            "Link": f'<a href="{e.get("htmlLink","")}" target="_blank">Öffnen</a>' if e.get("htmlLink") else ""
+            "Titel": e.get("summary", "")
         }
         for e in events
     ])
-    st.markdown(
-        df.to_html(escape=False, index=False),
-        unsafe_allow_html=True
-    )
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # Klickbare Links als Buttons unter der Tabelle
+    st.markdown("**Links zu Terminen:**")
+    for i, e in enumerate(events):
+        if e.get("htmlLink"):
+            st.markdown(f'<a href="{e["htmlLink"]}" target="_blank"><button>Öffnen: {e.get("summary", "")}</button></a>', unsafe_allow_html=True)
 
 # 👨‍🎓 Schüler Übersicht
 elif page == "👨‍🎓 Schüler":
