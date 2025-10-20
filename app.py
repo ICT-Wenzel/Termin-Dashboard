@@ -234,6 +234,7 @@ elif page == "➕ Neuer Termin":
         student = st.text_input("Schüler")
         teacher = st.text_input("Lehrer")
         subject = st.text_input("Thema")
+        contact = st.text_input("Kontakt")
 
         start_date = st.date_input("Startdatum", now.date())
         start_time = st.time_input("Startzeit", default_start_time.time())
@@ -250,7 +251,7 @@ elif page == "➕ Neuer Termin":
             payload = {
                 "type": "create",
                 "summary": title,
-                "description": f"Lehrer: {teacher}\nSchüler: {student}\nThema: {subject}",
+                "description": f"Lehrer: {teacher}\nSchüler: {student}\nThema: {subject}\nKontakt: {contact}",
                 "start": start_dt.isoformat(),
                 "end": end_dt.isoformat()
             }
